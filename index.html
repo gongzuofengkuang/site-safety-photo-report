@@ -25,7 +25,7 @@
     --sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
   }
   *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; }
+  html,body{ margin:0; padding:0; overscroll-behavior-y:contain; } /* 防止手機下拉重新整理 */
   body{
     font-family:var(--sans);
     color:var(--ink);
@@ -158,12 +158,42 @@
   .photo-slot.is-dragover .photo-drop{ border-color:var(--accent); background:var(--accent-soft); color:var(--accent-dark); }
   .photo-preview{ position:relative; min-height:130px; border-radius:10px; overflow:hidden; border:1px solid var(--line); background:#000; }
   .photo-preview img{ width:100%; height:130px; object-fit:cover; display:block; }
+  .chip-row{
+    position:absolute; left:6px; right:6px; bottom:6px; display:flex; justify-content:space-between; gap:6px;
+  }
   .chip-btn{
-    position:absolute; right:6px; bottom:6px; font-size:11.5px; font-weight:600;
-    background:rgba(20,24,32,.72); color:#fff; border:none; border-radius:999px; padding:4px 10px; cursor:pointer;
+    font-family:var(--sans); font-size:11.5px; font-weight:600;
+    background:rgba(20,24,32,.72); color:#fff; border:none; border-radius:999px; padding:5px 10px; cursor:pointer;
   }
   .chip-btn:hover{ background:rgba(200,74,18,.88); }
-  .chip-btn.left{ right:auto; left:6px; }
+  .chip-btn.mark{ background:rgba(200,30,30,.9); }
+  .chip-btn.mark:hover{ background:#b00; }
+  .is-touch .chip-btn{ font-size:13px; padding:7px 12px; }
+
+  /* 自動暫存狀態 */
+  .autosave-line{ font-size:12px; color:var(--ink-soft); margin:-12px 0 16px; min-height:1em; }
+  .autosave-line.ok::before{ content:"● "; color:var(--good); }
+
+  /* ---- 紅框標註編輯器 ---- */
+  .annot{
+    position:fixed; inset:0; z-index:50; background:#111418; color:#fff;
+    display:flex; flex-direction:column;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .annot[hidden]{ display:none; }
+  .annot-bar, .annot-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; flex-wrap:wrap; }
+  .annot-group{ display:flex; gap:6px; flex-wrap:wrap; }
+  .annot button{
+    font-family:var(--sans); font-size:14px; font-weight:600; color:#fff; background:#2a3039;
+    border:1px solid #3c4450; border-radius:8px; padding:9px 12px; cursor:pointer; min-width:44px;
+  }
+  .annot button.on{ background:#c81e1e; border-color:#e04848; }
+  .annot button.primary{ background:var(--accent); border-color:var(--accent); padding:10px 22px; }
+  .annot button:disabled{ opacity:.4; cursor:not-allowed; }
+  .annot-stage{ flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:4px 8px; }
+  .annot-stage canvas{ touch-action:none; display:block; background:#000; cursor:crosshair; }
+  .annot-hint{ font-size:12.5px; color:#aab2bd; }
+  body.annot-open{ overflow:hidden; }
   .is-busy{ opacity:.5; pointer-events:none; }
   .hint-touch, .photo-actions{ display:none; }
   .photo-actions{ gap:6px; }
@@ -269,6 +299,8 @@
       </label>
     </div>
 
+    <p class="autosave-line" id="autosaveStatus" aria-live="polite"></p>
+
     <details class="tools-panel">
       <summary>進階：範本檔、存檔與還原</summary>
 
@@ -299,6 +331,17 @@
       </div>
       <p class="template-swap-hint">匯出的檔案會包含所有已填寫的文字與照片，可離線保存或傳給其他人接續填寫；匯入檔案會「取代」目前畫面上所有內容，請先確認再匯入。</p>
     </div>
+
+    <div class="template-swap" id="draftPanel">
+      <div class="template-swap-row">
+        <div class="template-swap-text">
+          <span class="template-swap-title">本機自動暫存</span>
+          <span class="template-swap-status">填寫內容會自動暫存在這台裝置的瀏覽器，網頁被重整或關閉後可接續填寫</span>
+        </div>
+        <button type="button" class="btn btn-outline" id="clearDraftBtn">清除暫存並清空畫面</button>
+      </div>
+      <p class="template-swap-hint">暫存只存在這台裝置、這個瀏覽器（不會上傳）。換手機、換瀏覽器或使用無痕模式時看不到；重要資料請產生 Word 或匯出檔案備份。</p>
+    </div>
     </details>
 
     <div id="itemsList"></div>
@@ -316,10 +359,32 @@
       <span id="genStatus" class="gen-status" aria-live="polite"></span>
     </div>
 
-    <p class="footnote">提示：工具會自動縮小過大的照片以控制檔案大小。手機上點「選相片／相機APP」可從系統選單挑選相簿或其他相機 APP；點「直接拍照」會開啟預設相機。<br>製作：中工分局 鄭斯仲</p>
+    <p class="footnote">提示：工具會自動縮小過大的照片以控制檔案大小。手機上點「選相片／相機APP」可從系統選單挑選相簿或其他相機 APP；點「直接拍照」會開啟預設相機。缺失照片可按「標註紅框」圈出缺失處。<br>製作：中工分局 鄭斯仲</p>
   </main>
 
   <div id="toast" class="toast" hidden></div>
+
+  <div id="annotator" class="annot" hidden role="dialog" aria-modal="true" aria-label="照片紅框標註">
+    <div class="annot-bar">
+      <div class="annot-group" id="annotTools">
+        <button type="button" data-tool="ellipse" class="on">◯ 圓圈</button>
+        <button type="button" data-tool="rect">▢ 方框</button>
+        <button type="button" data-tool="arrow">↗ 箭頭</button>
+      </div>
+      <div class="annot-group">
+        <button type="button" id="annotUndo">↶ 復原</button>
+        <button type="button" id="annotClear">全部清除</button>
+      </div>
+    </div>
+    <div class="annot-stage" id="annotStage"><canvas id="annotCanvas"></canvas></div>
+    <div class="annot-foot">
+      <span class="annot-hint">在照片上拖曳畫出紅框，可畫多個</span>
+      <div class="annot-group">
+        <button type="button" id="annotCancel">取消</button>
+        <button type="button" id="annotDone" class="primary">完成</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1161,7 +1226,7 @@ if (typeof module !== 'undefined') {
     rocPreviewEl.textContent = roc ? '表單顯示：' + roc : '（未填日期，表單日期欄將留白）';
   }
   inspectionDateInput.value = todayIso();
-  inspectionDateInput.addEventListener('change', updateRocPreview);
+  inspectionDateInput.addEventListener('change', function () { updateRocPreview(); scheduleSave(); });
   inspectionDateInput.addEventListener('input', updateRocPreview);
   // open the calendar on tap/click where supported (Chrome/Edge/Android)
   inspectionDateInput.addEventListener('click', function () {
@@ -1174,7 +1239,7 @@ if (typeof module !== 'undefined') {
   // ---- branch region (remembered per browser) ----
   var savedRegion = lsGet('rbh-branch-region');
   if (savedRegion && /^(北部|中部|南部)$/.test(savedRegion)) branchSelect.value = savedRegion;
-  branchSelect.addEventListener('change', function () { lsSet('rbh-branch-region', branchSelect.value); });
+  branchSelect.addEventListener('change', function () { lsSet('rbh-branch-region', branchSelect.value); scheduleSave(); });
 
   function activeAssets() {
     if (!customTemplateAssets) return ASSETS;
@@ -1250,28 +1315,35 @@ if (typeof module !== 'undefined') {
     return { width: img.width, height: img.height, data: uint8ArrayToBase64(img.data) };
   }
 
+  // encodeImg: base64 for .json backups, identity for IndexedDB
+  function serializeItem(it, encodeImg) {
+    var enc = function (img) { return img && img.data ? encodeImg({ width: img.width, height: img.height, data: img.data }) : null; };
+    var hasMarks = it.defectShapes && it.defectShapes.length > 0;
+    return {
+      standard: it.standard || '',
+      desc: it.desc || '',
+      personnelGroups: it.personnelGroups.map(function (g) { return { unit: g.unit || '', names: g.names || '' }; }),
+      personnel: personnelToText(it.personnelGroups), // 舊版相容
+      correctiveText: it.correctiveText || '',
+      improvementNote: it.improvementNote || '',
+      reviewer: it.reviewer || '',
+      defectImage: enc(it.defectImage),                          // 已合成紅框（舊版工具也看得懂）
+      defectOriginal: hasMarks ? enc(it.defectOriginal) : null,  // 未標註原圖，供再次編輯
+      defectShapes: hasMarks ? it.defectShapes.map(function (s) { return { type: s.type, x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 }; }) : [],
+      fixImage: enc(it.fixImage)
+    };
+  }
+
   function exportWorkingData() {
     try {
       var payload = {
         type: 'inspection-checklist-backup',
-        version: 2,
+        version: 3,
         exportedAt: new Date().toISOString(),
         inspectionDateISO: inspectionDateInput.value || '',
         inspectionDate: isoToRoc(inspectionDateInput.value),
         branchRegion: branchSelect.value,
-        items: items.map(function (it) {
-          return {
-            standard: it.standard || '',
-            desc: it.desc || '',
-            personnelGroups: it.personnelGroups.map(function (g) { return { unit: g.unit || '', names: g.names || '' }; }),
-            personnel: personnelToText(it.personnelGroups), // 舊版相容
-            correctiveText: it.correctiveText || '',
-            improvementNote: it.improvementNote || '',
-            reviewer: it.reviewer || '',
-            defectImage: serializeImageForExport(it.defectImage),
-            fixImage: serializeImageForExport(it.fixImage)
-          };
-        })
+        items: items.map(function (it) { return serializeItem(it, serializeImageForExport); })
       };
       var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
       var now = new Date();
@@ -1295,16 +1367,57 @@ if (typeof module !== 'undefined') {
     return !!(it.standard || it.desc || groupsHaveContent(it.personnelGroups) || it.correctiveText || it.improvementNote || it.reviewer || it.defectImage || it.fixImage);
   }
 
-  function restoreImageFromImport(item, slot, raw) {
-    if (!raw || !raw.data) return;
+  // raw.data may be base64 (.json backup) or Uint8Array/ArrayBuffer (IndexedDB)
+  function decodeImage(raw) {
+    if (!raw || !raw.data) return null;
     try {
-      var bytes = base64ToUint8Array(raw.data);
-      var blob = new Blob([bytes], { type: 'image/jpeg' });
-      item[slot + 'Image'] = { data: bytes, width: raw.width, height: raw.height };
-      item[slot + 'PreviewUrl'] = URL.createObjectURL(blob);
+      var bytes = typeof raw.data === 'string' ? base64ToUint8Array(raw.data)
+        : (raw.data instanceof Uint8Array ? raw.data : new Uint8Array(raw.data));
+      return { data: bytes, width: raw.width, height: raw.height };
     } catch (e) {
       console.error('還原照片失敗', e);
+      return null;
     }
+  }
+
+  function previewUrlFor(img) {
+    return img ? URL.createObjectURL(new Blob([img.data], { type: 'image/jpeg' })) : null;
+  }
+
+  function itemFromRaw(raw) {
+    var it = newItem('', null);
+    it.standard = raw.standard || '';
+    it.desc = raw.desc || '';
+    it.personnelGroups = Array.isArray(raw.personnelGroups) && raw.personnelGroups.length
+      ? raw.personnelGroups.map(function (g) { return { unit: g.unit || '', names: g.names || '' }; })
+      : groupsFromLegacyText(raw.personnel);
+    it.correctiveText = raw.correctiveText || '';
+    it.improvementNote = raw.improvementNote || '';
+    it.reviewer = raw.reviewer || '';
+    it.defectImage = decodeImage(raw.defectImage);
+    it.defectOriginal = decodeImage(raw.defectOriginal) || it.defectImage;
+    it.defectShapes = (raw.defectOriginal && Array.isArray(raw.defectShapes)) ? raw.defectShapes.slice() : [];
+    if (!it.defectImage) it.defectImage = it.defectOriginal;
+    it.defectPreviewUrl = previewUrlFor(it.defectImage);
+    it.fixImage = decodeImage(raw.fixImage);
+    it.fixPreviewUrl = previewUrlFor(it.fixImage);
+    return it;
+  }
+
+  // replace the whole working state (used by .json import and draft restore)
+  function applyLoadedState(data) {
+    items.forEach(function (it) {
+      if (it.defectPreviewUrl) URL.revokeObjectURL(it.defectPreviewUrl);
+      if (it.fixPreviewUrl) URL.revokeObjectURL(it.fixPreviewUrl);
+    });
+    var newItems = data.items.map(itemFromRaw);
+    if (newItems.length === 0) newItems.push(newItem('', null));
+    items = newItems;
+    var iso = data.inspectionDateISO || rocToIso(data.inspectionDate);
+    inspectionDateInput.value = iso || '';
+    updateRocPreview();
+    if (data.branchRegion && /^(北部|中部|南部)$/.test(data.branchRegion)) branchSelect.value = data.branchRegion;
+    render();
   }
 
   // Old backups stored 會同人員 as one string, e.g. "工事科：王ＯＯ\n監造單位：李ＯＯ"
@@ -1335,31 +1448,7 @@ if (typeof module !== 'undefined') {
         var ok = confirm('匯入將會「取代」目前畫面上所有已填寫的內容（包含照片），是否繼續？');
         if (!ok) return;
       }
-      items.forEach(function (it) {
-        if (it.defectPreviewUrl) URL.revokeObjectURL(it.defectPreviewUrl);
-        if (it.fixPreviewUrl) URL.revokeObjectURL(it.fixPreviewUrl);
-      });
-      var newItems = data.items.map(function (raw) {
-        var it = newItem('', null);
-        it.standard = raw.standard || '';
-        it.desc = raw.desc || '';
-        it.personnelGroups = Array.isArray(raw.personnelGroups) && raw.personnelGroups.length
-          ? raw.personnelGroups.map(function (g) { return { unit: g.unit || '', names: g.names || '' }; })
-          : groupsFromLegacyText(raw.personnel);
-        it.correctiveText = raw.correctiveText || '';
-        it.improvementNote = raw.improvementNote || '';
-        it.reviewer = raw.reviewer || '';
-        restoreImageFromImport(it, 'defect', raw.defectImage);
-        restoreImageFromImport(it, 'fix', raw.fixImage);
-        return it;
-      });
-      if (newItems.length === 0) newItems.push(newItem('', null));
-      items = newItems;
-      var iso = data.inspectionDateISO || rocToIso(data.inspectionDate);
-      inspectionDateInput.value = iso || '';
-      updateRocPreview();
-      if (data.branchRegion && /^(北部|中部|南部)$/.test(data.branchRegion)) branchSelect.value = data.branchRegion;
-      render();
+      applyLoadedState(data);
       showToast('已匯入：' + (file.name || '存檔檔案'));
     };
     reader.onerror = function () { alert('讀取檔案失敗'); };
@@ -1403,6 +1492,336 @@ if (typeof module !== 'undefined') {
   }
   exportToolBtn.addEventListener('click', exportUpdatedTool);
 
+
+  // ===================== 紅框標註（只用於缺失照片） =====================
+  // Shapes are stored in normalized coordinates (0..1) on top of the untouched
+  // original photo, so they can be re-edited any time; only the composited JPEG
+  // (photo + red marks burned in) goes into the Word file.
+  var MARK_COLOR = '#e00000';
+
+  function markLineWidth(w, h) { return Math.max(3, Math.round(Math.min(w, h) * 0.012)); }
+
+  function drawShape(ctx, s, w, h, lw) {
+    var x1 = s.x1 * w, y1 = s.y1 * h, x2 = s.x2 * w, y2 = s.y2 * h;
+    ctx.save();
+    ctx.strokeStyle = MARK_COLOR; ctx.fillStyle = MARK_COLOR;
+    ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    if (s.type === 'ellipse') {
+      ctx.ellipse((x1 + x2) / 2, (y1 + y2) / 2, Math.max(1, Math.abs(x2 - x1) / 2), Math.max(1, Math.abs(y2 - y1) / 2), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (s.type === 'rect') {
+      ctx.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
+      ctx.stroke();
+    } else if (s.type === 'arrow') {
+      var ang = Math.atan2(y2 - y1, x2 - x1);
+      var head = lw * 4.5;
+      var bx = x2 - Math.cos(ang) * head * 0.8, by = y2 - Math.sin(ang) * head * 0.8;
+      ctx.moveTo(x1, y1); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - head * Math.cos(ang - 0.5), y2 - head * Math.sin(ang - 0.5));
+      ctx.lineTo(x2 - head * Math.cos(ang + 0.5), y2 - head * Math.sin(ang + 0.5));
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function loadImageFromBytes(bytes) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+      var img = new Image();
+      img.onload = function () { resolve({ img: img, url: url }); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('無法載入照片')); };
+      img.src = url;
+    });
+  }
+
+  // original + shapes → new JPEG {data,width,height,previewUrl}
+  function compositeMarks(original, shapes) {
+    return loadImageFromBytes(original.data).then(function (r) {
+      var w = original.width, h = original.height;
+      var c = document.createElement('canvas'); c.width = w; c.height = h;
+      var ctx = c.getContext('2d');
+      ctx.drawImage(r.img, 0, 0, w, h);
+      URL.revokeObjectURL(r.url);
+      var lw = markLineWidth(w, h);
+      shapes.forEach(function (s) { drawShape(ctx, s, w, h, lw); });
+      return new Promise(function (resolve, reject) {
+        c.toBlob(function (blob) {
+          if (!blob) { reject(new Error('標註合成失敗')); return; }
+          blob.arrayBuffer().then(function (buf) {
+            resolve({ data: new Uint8Array(buf), width: w, height: h, previewUrl: URL.createObjectURL(blob) });
+          }, reject);
+        }, 'image/jpeg', 0.88);
+      });
+    });
+  }
+
+  var annotEl = document.getElementById('annotator');
+  var annotCanvas = document.getElementById('annotCanvas');
+  var annotStage = document.getElementById('annotStage');
+  var annotUndoBtn = document.getElementById('annotUndo');
+  var annotClearBtn = document.getElementById('annotClear');
+  var annot = null; // { item, img, url, shapes, tool, draft, dispW, dispH }
+
+  function annotLayout() {
+    if (!annot) return;
+    var o = annot.item.defectOriginal;
+    var maxW = annotStage.clientWidth - 16, maxH = annotStage.clientHeight - 8;
+    var scale = Math.min(maxW / o.width, maxH / o.height);
+    annot.dispW = Math.max(50, Math.floor(o.width * scale));
+    annot.dispH = Math.max(50, Math.floor(o.height * scale));
+    var dpr = window.devicePixelRatio || 1;
+    annotCanvas.style.width = annot.dispW + 'px';
+    annotCanvas.style.height = annot.dispH + 'px';
+    annotCanvas.width = Math.round(annot.dispW * dpr);
+    annotCanvas.height = Math.round(annot.dispH * dpr);
+    annotRedraw();
+  }
+
+  function annotRedraw() {
+    if (!annot) return;
+    var ctx = annotCanvas.getContext('2d');
+    var W = annotCanvas.width, H = annotCanvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(annot.img, 0, 0, W, H);
+    // same visual thickness ratio as the final composite
+    var lw = markLineWidth(W, H);
+    annot.shapes.forEach(function (s) { drawShape(ctx, s, W, H, lw); });
+    if (annot.draft) drawShape(ctx, annot.draft, W, H, lw);
+    annotUndoBtn.disabled = annotClearBtn.disabled = annot.shapes.length === 0;
+  }
+
+  function openAnnotator(item) {
+    if (!item || !item.defectOriginal) return;
+    loadImageFromBytes(item.defectOriginal.data).then(function (r) {
+      annot = { item: item, img: r.img, url: r.url, shapes: (item.defectShapes || []).map(function (s) { return Object.assign({}, s); }), tool: annot && annot.tool || 'ellipse', draft: null };
+      annotEl.hidden = false;
+      document.body.classList.add('annot-open');
+      setAnnotTool(annot.tool);
+      requestAnimationFrame(annotLayout);
+    }).catch(function (err) { alert(err.message); });
+  }
+
+  function closeAnnotator() {
+    if (annot && annot.url) URL.revokeObjectURL(annot.url);
+    annot = null;
+    annotEl.hidden = true;
+    document.body.classList.remove('annot-open');
+  }
+
+  function setAnnotTool(tool) {
+    if (annot) annot.tool = tool;
+    Array.prototype.forEach.call(document.querySelectorAll('#annotTools button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-tool') === tool);
+    });
+  }
+
+  document.getElementById('annotTools').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-tool]');
+    if (b) setAnnotTool(b.getAttribute('data-tool'));
+  });
+
+  function annotPoint(e) {
+    var r = annotCanvas.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
+    };
+  }
+
+  annotCanvas.addEventListener('pointerdown', function (e) {
+    if (!annot) return;
+    e.preventDefault();
+    try { annotCanvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    var p = annotPoint(e);
+    annot.draft = { type: annot.tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+    annot.pointerId = e.pointerId;
+  });
+  annotCanvas.addEventListener('pointermove', function (e) {
+    if (!annot || !annot.draft || e.pointerId !== annot.pointerId) return;
+    e.preventDefault();
+    var p = annotPoint(e);
+    annot.draft.x2 = p.x; annot.draft.y2 = p.y;
+    annotRedraw();
+  });
+  function endDraft(e) {
+    if (!annot || !annot.draft || e.pointerId !== annot.pointerId) return;
+    var d = annot.draft;
+    annot.draft = null;
+    // ignore taps / tiny accidental drags
+    var size = Math.max(Math.abs(d.x2 - d.x1), Math.abs(d.y2 - d.y1));
+    if (size > 0.02) annot.shapes.push(d);
+    annotRedraw();
+  }
+  annotCanvas.addEventListener('pointerup', endDraft);
+  annotCanvas.addEventListener('pointercancel', endDraft);
+
+  annotUndoBtn.addEventListener('click', function () { if (annot) { annot.shapes.pop(); annotRedraw(); } });
+  annotClearBtn.addEventListener('click', function () {
+    if (annot && annot.shapes.length && confirm('清除這張照片上所有紅框？')) { annot.shapes = []; annotRedraw(); }
+  });
+  document.getElementById('annotCancel').addEventListener('click', closeAnnotator);
+  document.getElementById('annotDone').addEventListener('click', function () {
+    if (!annot) return;
+    var item = annot.item, shapes = annot.shapes;
+    closeAnnotator();
+    applyMarks(item, shapes);
+  });
+  window.addEventListener('resize', function () { if (annot) annotLayout(); });
+  document.addEventListener('keydown', function (e) { if (annot && e.key === 'Escape') closeAnnotator(); });
+
+  function applyMarks(item, shapes) {
+    var o = item.defectOriginal;
+    if (!o) return Promise.resolve();
+    var setResult = function (img, url) {
+      if (item.defectPreviewUrl) URL.revokeObjectURL(item.defectPreviewUrl);
+      item.defectShapes = shapes;
+      item.defectImage = img;
+      item.defectPreviewUrl = url;
+      render();
+    };
+    if (!shapes.length) {
+      setResult(o, URL.createObjectURL(new Blob([o.data], { type: 'image/jpeg' })));
+      return Promise.resolve();
+    }
+    return compositeMarks(o, shapes).then(function (r) {
+      setResult({ data: r.data, width: r.width, height: r.height }, r.previewUrl);
+    }).catch(function (err) { alert(err.message || '標註失敗'); });
+  }
+
+  // ===================== 本機自動暫存（IndexedDB） =====================
+  // A separate database name so other tools on the same github.io account
+  // (same origin) never collide with this one.
+  var DRAFT_DB = 'rbh-s05-02-photo-tool';
+  var DRAFT_STORE = 'drafts';
+  var DRAFT_KEY = 'current';
+  var autosaveEl = document.getElementById('autosaveStatus');
+  var autosaveReady = false; // stays false until the restore decision is made
+  var saveTimer = null;
+  var dbPromise = null;
+
+  function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('此瀏覽器不支援本機暫存')); return; }
+      var req = indexedDB.open(DRAFT_DB, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(DRAFT_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('無法開啟本機暫存')); };
+    });
+    dbPromise.catch(function () { dbPromise = null; });
+    return dbPromise;
+  }
+
+  function dbOp(mode, fn) {
+    return openDb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DRAFT_STORE, mode);
+        var store = tx.objectStore(DRAFT_STORE);
+        var req = fn(store);
+        tx.oncomplete = function () { resolve(req && req.result); };
+        tx.onerror = function () { reject(tx.error); };
+        tx.onabort = function () { reject(tx.error || new Error('暫存失敗（空間可能不足）')); };
+      });
+    });
+  }
+
+  function snapshotState(encodeImg) {
+    return {
+      savedAt: Date.now(),
+      inspectionDateISO: inspectionDateInput.value || '',
+      branchRegion: branchSelect.value,
+      items: items.map(function (it) { return serializeItem(it, encodeImg); })
+    };
+  }
+
+  function setAutosaveText(text, ok) {
+    autosaveEl.textContent = text;
+    autosaveEl.classList.toggle('ok', !!ok);
+  }
+
+  function hhmm(t) { var d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+
+  function saveDraftNow() {
+    clearTimeout(saveTimer); saveTimer = null;
+    if (!autosaveReady) return Promise.resolve();
+    var data;
+    if (!workingDataHasContent()) {
+      return dbOp('readwrite', function (s) { return s.delete(DRAFT_KEY); }).then(function () {
+        setAutosaveText('', false);
+      }, function () { /* ignore */ });
+    }
+    data = snapshotState(function (img) { return img; }); // IndexedDB stores Uint8Array as-is
+    return dbOp('readwrite', function (s) { return s.put(data, DRAFT_KEY); }).then(function () {
+      setAutosaveText('已自動暫存於本機 ' + hhmm(data.savedAt), true);
+    }, function (err) {
+      console.error(err);
+      setAutosaveText('⚠ 自動暫存失敗：' + (err && err.message ? err.message : err) + '，請記得匯出檔案備份', false);
+    });
+  }
+
+  function scheduleSave() {
+    if (!autosaveReady) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveDraftNow, 700);
+  }
+
+  // Phones often kill the page while the camera app is open: save the moment we lose focus.
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') saveDraftNow(); });
+  window.addEventListener('pagehide', function () { saveDraftNow(); });
+
+  function deleteDraft() {
+    return dbOp('readwrite', function (s) { return s.delete(DRAFT_KEY); }).catch(function () { /* ignore */ });
+  }
+
+  function resetAll() {
+    items.forEach(function (it) {
+      if (it.defectPreviewUrl) URL.revokeObjectURL(it.defectPreviewUrl);
+      if (it.fixPreviewUrl) URL.revokeObjectURL(it.fixPreviewUrl);
+    });
+    items = [newItem('', null)];
+    inspectionDateInput.value = todayIso();
+    updateRocPreview();
+    render();
+  }
+
+  document.getElementById('clearDraftBtn').addEventListener('click', function () {
+    if (!confirm('確定清除本機暫存，並清空畫面上所有內容（含照片）？\n此動作無法復原。')) return;
+    clearTimeout(saveTimer);
+    deleteDraft().then(function () {
+      resetAll();
+      setAutosaveText('', false);
+      showToast('已清除暫存資料');
+    });
+  });
+
+  function restoreDraftOnLoad() {
+    return dbOp('readonly', function (s) { return s.get(DRAFT_KEY); }).then(function (data) {
+      if (!data || !Array.isArray(data.items) || !data.items.length) return;
+      var photos = 0;
+      data.items.forEach(function (r) { if (r.defectImage) photos++; if (r.fixImage) photos++; });
+      var when = new Date(data.savedAt);
+      var msg = '發現上次未完成的資料（' + (when.getMonth() + 1) + '/' + when.getDate() + ' ' + hhmm(data.savedAt) +
+        '，' + data.items.length + ' 筆、' + photos + ' 張照片）。\n\n要繼續編輯嗎？\n（按「取消」會刪除這份暫存）';
+      if (confirm(msg)) {
+        applyLoadedState(data);
+        showToast('已還原上次的資料');
+      } else {
+        return deleteDraft();
+      }
+    }).catch(function (err) {
+      console.warn('本機暫存無法使用', err);
+      setAutosaveText('⚠ 這個瀏覽器無法自動暫存（可能是無痕模式），請記得匯出檔案備份', false);
+    }).then(function () {
+      autosaveReady = true;
+      if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(function () { /* ignore */ });
+      }
+    });
+  }
+
   // ===================== items =====================
   var items = [];
   var seq = 0;
@@ -1421,6 +1840,7 @@ if (typeof module !== 'undefined') {
       personnelGroups: cloneGroups(carryGroups),
       correctiveText: '', improvementNote: '', reviewer: '',
       defectImage: null, defectPreviewUrl: null,
+      defectOriginal: null, defectShapes: [],
       fixImage: null, fixPreviewUrl: null
     };
   }
@@ -1469,8 +1889,12 @@ if (typeof module !== 'undefined') {
       return (
         '<div class="photo-preview">' +
           '<img src="' + url + '" alt="">' +
-          '<button type="button" class="chip-btn left" data-action="pick-photo" data-mode="choose" data-slot="' + slot + '" data-id="' + item.id + '">更換</button>' +
-          '<button type="button" class="chip-btn" data-action="clear-photo" data-slot="' + slot + '" data-id="' + item.id + '">移除</button>' +
+          '<div class="chip-row">' +
+            '<button type="button" class="chip-btn" data-action="pick-photo" data-mode="choose" data-slot="' + slot + '" data-id="' + item.id + '">更換</button>' +
+            (slot === 'defect' ? '<button type="button" class="chip-btn mark" data-action="annotate" data-id="' + item.id + '">' +
+              ((item.defectShapes && item.defectShapes.length) ? '編輯紅框（' + item.defectShapes.length + '）' : '標註紅框') + '</button>' : '') +
+            '<button type="button" class="chip-btn" data-action="clear-photo" data-slot="' + slot + '" data-id="' + item.id + '">移除</button>' +
+          '</div>' +
         '</div>'
       );
     }
@@ -1561,6 +1985,7 @@ if (typeof module !== 'undefined') {
     items.forEach(function (item, i) { item.category = String(i + 1); });
     itemsList.innerHTML = items.map(cardTemplate).join('');
     updateDatalists();
+    scheduleSave();
   }
 
   // ---- actions ----
@@ -1591,6 +2016,7 @@ if (typeof module !== 'undefined') {
     if (item[urlKey]) URL.revokeObjectURL(item[urlKey]);
     item[slot + 'Image'] = null;
     item[urlKey] = null;
+    if (slot === 'defect') { item.defectOriginal = null; item.defectShapes = []; }
     render();
   }
 
@@ -1643,6 +2069,7 @@ if (typeof module !== 'undefined') {
       if (item[urlKey]) URL.revokeObjectURL(item[urlKey]);
       item[slot + 'Image'] = { data: result.data, width: result.width, height: result.height };
       item[urlKey] = result.previewUrl;
+      if (slot === 'defect') { item.defectOriginal = item.defectImage; item.defectShapes = []; }
       render();
     }).catch(function (err) {
       alert(err.message || '處理照片時發生錯誤');
@@ -1661,10 +2088,11 @@ if (typeof module !== 'undefined') {
     if (pg) {
       var g = item.personnelGroups[Number(t.getAttribute('data-gi'))];
       if (g) g[pg] = t.value;
-      return;
+    } else {
+      var field = t.getAttribute('data-field');
+      if (field) item[field] = t.value;
     }
-    var field = t.getAttribute('data-field');
-    if (field) item[field] = t.value;
+    scheduleSave();
   });
 
   itemsList.addEventListener('change', function (e) {
@@ -1696,6 +2124,8 @@ if (typeof module !== 'undefined') {
       var mode = actionEl.getAttribute('data-mode') || 'choose';
       var input = itemsList.querySelector('input[type=file][data-id="' + id + '"][data-slot="' + slot + '"][data-mode="' + mode + '"]');
       if (input) input.click();
+    } else if (action === 'annotate' && item) {
+      openAnnotator(item);
     } else if (action === 'pg-add' && item) {
       item.personnelGroups.push({ unit: '', names: '' });
       render();
@@ -1801,6 +2231,13 @@ if (typeof module !== 'undefined') {
         downloadBlob(blob, fname);
         showToast('已下載：' + fname);
         setGenerating(false);
+        // give the download a moment to start before the blocking dialog
+        setTimeout(function () {
+          if (confirm('Word 檔已產生：\n' + fname + '\n\n是否清除這台裝置上的暫存資料並清空畫面？\n（確認 Word 檔已下載成功再清除；按「取消」可保留繼續編輯）')) {
+            clearTimeout(saveTimer);
+            deleteDraft().then(function () { resetAll(); setAutosaveText('', false); showToast('已清除暫存資料'); });
+          }
+        }, 900);
       }).catch(function (err) {
         console.error(err);
         alert('產生 Word 檔時發生錯誤：' + (err && err.message ? err.message : err));
@@ -1809,9 +2246,11 @@ if (typeof module !== 'undefined') {
     }, 30);
   });
 
-  // initial state: one empty item to start with
+  // initial state: one empty item, then offer to restore the last unfinished draft
   items.push(newItem('', null));
   render();
+  restoreDraftOnLoad();
+  window.__app = { get items() { return items; }, saveDraftNow: saveDraftNow, applyMarks: applyMarks };
 })();
 
 </script>
